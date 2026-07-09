@@ -10,8 +10,16 @@ from ..models import AbstractGrant
 from ..settings import oauth2_settings
 
 
-# RFC 9700 §2.1.2: response types that rely on the implicit grant.
-BCP_IMPLICIT_RESPONSE_TYPES = frozenset({"token", "id_token", "id_token token"})
+def _is_implicit_response_type(response_type):
+    """
+    Whether a response type is an implicit-grant (front-channel) response type per
+    RFC 9700 §2.1.2: it issues a ``token``/``id_token`` directly without an
+    authorization ``code``. Response types are space-separated *sets*, so the token
+    order does not matter (``"id_token token"`` == ``"token id_token"``); hybrid
+    response types (which include ``code``) are not implicit.
+    """
+    values = set(response_type.split())
+    return "code" not in values and bool(values & {"token", "id_token"})
 
 
 def bcp_filter_response_types(response_types):
@@ -23,7 +31,7 @@ def bcp_filter_response_types(response_types):
     """
     if oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED:
         return list(response_types)
-    return [rt for rt in response_types if rt not in BCP_IMPLICIT_RESPONSE_TYPES]
+    return [rt for rt in response_types if not _is_implicit_response_type(rt)]
 
 
 def bcp_filter_code_challenge_methods(methods):

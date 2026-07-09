@@ -296,6 +296,22 @@ def test_set_token_value_clears_stale_raw_token_in_plaintext_mode():
     assert tok._raw_token is None
 
 
+def test_bcp_filter_response_types_is_token_order_independent(oauth2_settings):
+    # Response types are space-separated sets: implicit types must be filtered
+    # regardless of token order; hybrid (code ...) types are kept.
+    from oauth2_provider.views.metadata import bcp_filter_response_types
+
+    oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED = False
+    filtered = bcp_filter_response_types(
+        ["code", "token id_token", "id_token token", "token", "code token"]
+    )
+    assert "token id_token" not in filtered
+    assert "id_token token" not in filtered
+    assert "token" not in filtered
+    assert "code" in filtered
+    assert "code token" in filtered  # hybrid is not gated
+
+
 def test_add_iss_to_redirect_query():
     result = _add_iss_to_redirect("https://c.example/cb?code=abc&state=x", "https://as.example")
     assert result == "https://c.example/cb?code=abc&state=x&iss=https%3A%2F%2Fas.example"
