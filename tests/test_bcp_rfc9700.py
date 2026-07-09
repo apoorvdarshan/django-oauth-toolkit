@@ -256,14 +256,17 @@ def test_authorization_server_issuer_falls_back_when_url_unresolvable(monkeypatc
     assert live_settings.oauth2_authorization_server_issuer(request) == "http://testserver"
 
 
-@pytest.mark.django_db
-def test_implicit_response_type_rejected_for_non_implicit_client(application):
-    # A client registered for the authorization_code grant does not allow the
-    # implicit ``token`` response type, regardless of the gate.
+def test_implicit_response_type_rejected_for_non_implicit_client():
+    # A client that does not allow the implicit grant is rejected for the ``token``
+    # response type before the gate is consulted (no DB access needed).
     from oauth2_provider.oauth2_validators import OAuth2Validator
 
+    class _Client:
+        def allows_grant_type(self, *grant_types):
+            return False
+
     validator = OAuth2Validator()
-    assert validator.validate_response_type(None, "token", application, None) is False
+    assert validator.validate_response_type(None, "token", _Client(), None) is False
 
 
 def test_add_iss_to_redirect_query():
