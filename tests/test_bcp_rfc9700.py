@@ -234,6 +234,38 @@ class TestAccessTokenInQueryGate(TestCase):
 # ---------------------------------------------------------------------------
 # RFC 9207 iss parameter
 # ---------------------------------------------------------------------------
+def test_authorization_server_issuer_uses_oidc_iss_endpoint(oauth2_settings):
+    oauth2_settings.OIDC_ISS_ENDPOINT = "https://issuer.example/o"
+    from oauth2_provider.settings import oauth2_settings as live_settings
+
+    assert live_settings.oauth2_authorization_server_issuer(None) == "https://issuer.example/o"
+
+
+def test_authorization_server_issuer_falls_back_when_url_unresolvable(monkeypatch):
+    from django.test import RequestFactory
+    from django.urls import NoReverseMatch
+
+    from oauth2_provider import settings as settings_module
+    from oauth2_provider.settings import oauth2_settings as live_settings
+
+    def _raise(*args, **kwargs):
+        raise NoReverseMatch
+
+    monkeypatch.setattr(settings_module, "reverse", _raise)
+    request = RequestFactory().get("/o/authorize/")
+    assert live_settings.oauth2_authorization_server_issuer(request) == "http://testserver"
+
+
+@pytest.mark.django_db
+def test_implicit_response_type_rejected_for_non_implicit_client(application):
+    # A client registered for the authorization_code grant does not allow the
+    # implicit ``token`` response type, regardless of the gate.
+    from oauth2_provider.oauth2_validators import OAuth2Validator
+
+    validator = OAuth2Validator()
+    assert validator.validate_response_type(None, "token", application, None) is False
+
+
 def test_add_iss_to_redirect_query():
     result = _add_iss_to_redirect("https://c.example/cb?code=abc&state=x", "https://as.example")
     assert result == "https://c.example/cb?code=abc&state=x&iss=https%3A%2F%2Fas.example"
@@ -305,8 +337,8 @@ class TestTokenStorageGate(TestCase):
         raw = self._get_token()
         expected_checksum = hashlib.sha256(raw.encode()).hexdigest()
         at = AccessToken.objects.get(token_checksum=expected_checksum)
-        # The raw token is not persisted; only its hash is stored.
-        self.assertNotEqual(at.token, raw)
+        # The raw token is not persisted; the column is blank and only the hash is kept.
+        self.assertEqual(at.token, "")
         self.assertEqual(at.token_checksum, expected_checksum)
 
     def test_hashed_token_still_authenticates(self):
@@ -316,6 +348,53 @@ class TestTokenStorageGate(TestCase):
         request.user = self.user
         response = ResourceView.as_view()(request)
         self.assertEqual(response, "This is a protected resource")
+
+    def test_hashed_token_checksum_survives_resave(self):
+        # Regression: re-saving a hashed token (e.g. via revoke()) must not recompute
+        # token_checksum from the blank/hashed column and corrupt it.
+        self.oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED = False
+        raw = self._get_token()
+        checksum = hashlib.sha256(raw.encode()).hexdigest()
+        at = AccessToken.objects.get(token_checksum=checksum)
+        at.expires = at.expires + timedelta(seconds=1)
+        at.save()
+        at.refresh_from_db()
+        self.assertEqual(at.token_checksum, checksum)
+
+
+@pytest.mark.usefixtures("oauth2_settings")
+class TestHashedRefreshTokenRotation(TestCase):
+    """Rotation revokes the previous refresh token (which re-saves it)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserModel.objects.create_user("ro", "ro@example.com", "123456")
+        cls.application = Application.objects.create(
+            name="rot",
+            user=cls.user,
+            client_type=Application.CLIENT_CONFIDENTIAL,
+            authorization_grant_type=Application.GRANT_PASSWORD,
+            client_secret=CLEARTEXT_SECRET,
+        )
+
+    def test_rotation_with_hashed_storage(self):
+        self.oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED = False
+        headers = get_basic_auth_header(self.application.client_id, CLEARTEXT_SECRET)
+        first = self.client.post(
+            reverse("oauth2_provider:token"),
+            data={"grant_type": "password", "username": "ro", "password": "123456"},
+            **headers,
+        )
+        refresh = json.loads(first.content)["refresh_token"]
+        # Using the refresh token rotates it and revokes the old one (a re-save that
+        # previously corrupted the checksum). The refresh must succeed.
+        second = self.client.post(
+            reverse("oauth2_provider:token"),
+            data={"grant_type": "refresh_token", "refresh_token": refresh},
+            **headers,
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertIn("access_token", json.loads(second.content))
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +417,7 @@ class TestDeployChecks(TestCase):
             "oauth2_provider.W005",
             "oauth2_provider.W006",
             "oauth2_provider.W007",
+            "oauth2_provider.W008",
         ]:
             self.assertIn(expected, ids)
 

@@ -987,13 +987,15 @@ class OAuth2Validator(RequestValidator):
         when OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED is disabled (RFC 9700).
 
         The lookup checksum (``token_checksum``) is always derived from the raw token;
-        when redacting, the raw value is stashed on ``_raw_token`` so the checksum stays
-        correct while the ``token`` column holds only its (non-reversible) hash.
+        when redacting, the raw value is stashed on ``_raw_token`` (used only to compute
+        the checksum) and the ``token`` column is left blank so the reusable token is
+        never persisted.
         """
-        token_instance.token = raw_token
-        if not oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED:
+        if oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED:
+            token_instance.token = raw_token
+        else:
             token_instance._raw_token = raw_token
-            token_instance.token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+            token_instance.token = ""
 
     def _create_access_token(self, expires, request, token, source_refresh_token=None):
         id_token = token.get("id_token", None)

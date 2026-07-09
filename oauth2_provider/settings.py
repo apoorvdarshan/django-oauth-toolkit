@@ -413,6 +413,15 @@ class OAuth2ProviderSettings:
         (which preserves any mount prefix). Unlike :meth:`oauth2_metadata_issuer`,
         this can be called from endpoints (e.g. the authorization endpoint) whose own
         path does not contain the ``.well-known`` marker.
+
+        .. note::
+           The derived value uses the root RFC 8414 metadata URL and therefore does
+           not include an RFC 8414 *path-component* issuer suffix (the
+           ``/.well-known/oauth-authorization-server/<issuer_path>`` form), which is
+           not knowable from the authorization request. Multi-tenant / path-component
+           deployments MUST set ``OIDC_ISS_ENDPOINT`` (per issuer) so the ``iss`` value
+           matches the published metadata ``issuer`` and the RFC 9207 mix-up defense
+           holds.
         """
         if self.OIDC_ISS_ENDPOINT:
             return self.OIDC_ISS_ENDPOINT

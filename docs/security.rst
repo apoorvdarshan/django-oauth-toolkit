@@ -102,6 +102,13 @@ authorization response and advertise
 value matches the metadata ``issuer`` (``OIDC_ISS_ENDPOINT`` when configured,
 otherwise derived from the request).
 
+.. note::
+   Multi-tenant deployments that use the RFC 8414 path-component issuer form
+   (``/.well-known/oauth-authorization-server/<issuer_path>``) MUST set
+   ``OIDC_ISS_ENDPOINT`` (per issuer) so the ``iss`` parameter matches the published
+   metadata ``issuer``; the issuer suffix cannot be derived from the authorization
+   request itself.
+
 Refresh-token rotation and replay detection (§4.14)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Rotation is on by default (``ROTATE_REFRESH_TOKEN``). Set
