@@ -31,11 +31,12 @@ log = logging.getLogger("oauth2_provider")
 
 def bcp_warning_message(setting_name, behavior):
     """Build the standard warning/enforcement message for a gate."""
+    setting_ref = f'OAUTH2_PROVIDER["{setting_name}"]'
     return (
         f"{behavior} is discouraged by RFC 9700 (OAuth 2.0 Security Best Current "
-        f"Practice). It is currently allowed because {setting_name}=True; this "
+        f"Practice). It is currently allowed because {setting_ref} is True; this "
         f"default is scheduled to change to False in django-oauth-toolkit 4.0. Set "
-        f"{setting_name}=False to adopt the compliant behavior now."
+        f"{setting_ref} to False to adopt the compliant behavior now."
     )
 
 
