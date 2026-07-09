@@ -574,10 +574,14 @@ class OAuth2Validator(RequestValidator):
                 return None
 
             token_checksum = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            # Respect hashed-at-rest storage (RFC 9700): the resource-server token cache
+            # is looked up by checksum, so it must not persist the cleartext token when
+            # OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED is disabled.
+            stored_token = token if oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED else ""
             access_token, _created = AccessToken.objects.update_or_create(
                 token_checksum=token_checksum,
                 defaults={
-                    "token": token,
+                    "token": stored_token,
                     "user": user,
                     "application": None,
                     "scope": scope,
@@ -1155,7 +1159,10 @@ class OAuth2Validator(RequestValidator):
             return False
 
         request.user = rt.user
-        request.refresh_token = rt.token
+        # Use the raw token presented in the request, not rt.token: under hashed-at-rest
+        # storage (OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED=False) the stored
+        # column is blank, and oauthlib reuses request.refresh_token when rotation is off.
+        request.refresh_token = refresh_token
         # Temporary store RefreshToken instance to be reused by get_original_scopes and save_bearer_token.
         request.refresh_token_instance = rt
 

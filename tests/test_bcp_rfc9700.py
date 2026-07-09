@@ -110,8 +110,12 @@ class TestImplicitGrantGate(TestCase):
     def test_rejected_when_gate_disabled(self):
         self.oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED = False
         response = self._authorize()
-        # An unsupported response type is rejected rather than rendering consent.
-        self.assertNotEqual(response.status_code, 200)
+        # Rejected via an error redirect to the client (oauthlib maps a disallowed
+        # response type to unauthorized_client), not by rendering consent or issuing
+        # a token.
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("error=unauthorized_client", response["Location"])
+        self.assertNotIn("access_token", response["Location"])
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +301,14 @@ def test_add_iss_to_redirect_query():
     assert result == "https://c.example/cb?code=abc&state=x&iss=https%3A%2F%2Fas.example"
 
 
+def test_add_iss_to_redirect_replaces_existing_iss():
+    # RFC 9207 requires a single issuer: a pre-existing iss must be dropped.
+    result = _add_iss_to_redirect("https://c.example/cb?code=abc&iss=evil", "https://as.example")
+    assert result.count("iss=") == 1
+    assert "iss=https%3A%2F%2Fas.example" in result
+    assert "evil" not in result
+
+
 def test_add_iss_to_redirect_fragment():
     result = _add_iss_to_redirect("https://c.example/cb#access_token=abc", "https://as.example")
     assert result.startswith("https://c.example/cb#")
@@ -448,6 +460,42 @@ class TestHashedRefreshTokenRotation(TestCase):
         )
         self.assertEqual(second.status_code, 200)
         self.assertIn("access_token", json.loads(second.content))
+
+
+@pytest.mark.usefixtures("oauth2_settings")
+class TestHashedNonRotatingRefreshToken(TestCase):
+    """Non-rotating refresh reuses request.refresh_token, which is blank at rest
+    under hashed storage unless the raw presented token is used."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserModel.objects.create_user("nr", "nr@example.com", "123456")
+        cls.application = Application.objects.create(
+            name="nonrot",
+            user=cls.user,
+            client_type=Application.CLIENT_CONFIDENTIAL,
+            authorization_grant_type=Application.GRANT_PASSWORD,
+            client_secret=CLEARTEXT_SECRET,
+        )
+
+    def test_non_rotating_refresh_with_hashed_storage(self):
+        self.oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED = False
+        self.oauth2_settings.ROTATE_REFRESH_TOKEN = False
+        headers = get_basic_auth_header(self.application.client_id, CLEARTEXT_SECRET)
+        first = self.client.post(
+            reverse("oauth2_provider:token"),
+            data={"grant_type": "password", "username": "nr", "password": "123456"},
+            **headers,
+        )
+        refresh = json.loads(first.content)["refresh_token"]
+        second = self.client.post(
+            reverse("oauth2_provider:token"),
+            data={"grant_type": "refresh_token", "refresh_token": refresh},
+            **headers,
+        )
+        self.assertEqual(second.status_code, 200)
+        # Non-rotating: the same (non-blank) refresh token is returned.
+        self.assertEqual(json.loads(second.content)["refresh_token"], refresh)
 
 
 # ---------------------------------------------------------------------------
