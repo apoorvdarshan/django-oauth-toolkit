@@ -302,9 +302,7 @@ def test_bcp_filter_response_types_is_token_order_independent(oauth2_settings):
     from oauth2_provider.views.metadata import bcp_filter_response_types
 
     oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED = False
-    filtered = bcp_filter_response_types(
-        ["code", "token id_token", "id_token token", "token", "code token"]
-    )
+    filtered = bcp_filter_response_types(["code", "token id_token", "id_token token", "token", "code token"])
     assert "token id_token" not in filtered
     assert "id_token token" not in filtered
     assert "token" not in filtered
