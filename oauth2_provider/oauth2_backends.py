@@ -22,15 +22,16 @@ def _add_iss_to_redirect(uri, issuer):
     """
     parts = list(urlparse(uri))
     # RFC 9207 requires a single, unambiguous issuer, so drop any pre-existing `iss`
-    # (e.g. from the registered redirect URI) before adding the server's value.
+    # from BOTH the query and the fragment (e.g. one carried in the registered redirect
+    # URI) before adding the server's value to whichever component carries the response.
+    query = [(k, v) for k, v in parse_qsl(parts[4], keep_blank_values=True) if k != "iss"]
+    fragment = [(k, v) for k, v in parse_qsl(parts[5], keep_blank_values=True) if k != "iss"]
     if parts[5]:  # fragment present -> implicit/hybrid front-channel response
-        fragment = [(k, v) for k, v in parse_qsl(parts[5], keep_blank_values=True) if k != "iss"]
         fragment.append(("iss", issuer))
-        parts[5] = stdlib_urlencode(fragment)
     else:
-        query = [(k, v) for k, v in parse_qsl(parts[4], keep_blank_values=True) if k != "iss"]
         query.append(("iss", issuer))
-        parts[4] = stdlib_urlencode(query)
+    parts[4] = stdlib_urlencode(query)
+    parts[5] = stdlib_urlencode(fragment)
     return urlunparse(parts)
 
 

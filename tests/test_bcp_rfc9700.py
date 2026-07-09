@@ -309,6 +309,14 @@ def test_add_iss_to_redirect_replaces_existing_iss():
     assert "evil" not in result
 
 
+def test_add_iss_to_redirect_single_iss_across_query_and_fragment():
+    # A query iss on a fragment (implicit/hybrid) response must not leave two iss values.
+    result = _add_iss_to_redirect("https://c.example/cb?iss=evil#access_token=abc", "https://as.example")
+    assert result.count("iss=") == 1
+    assert "evil" not in result
+    assert "iss=https%3A%2F%2Fas.example" in result
+
+
 def test_add_iss_to_redirect_fragment():
     result = _add_iss_to_redirect("https://c.example/cb#access_token=abc", "https://as.example")
     assert result.startswith("https://c.example/cb#")

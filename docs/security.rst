@@ -18,8 +18,13 @@ Several behaviors that RFC 9700 discourages are still enabled by default so that
 upgrading does not change how an existing deployment behaves. Each is controlled by
 an ``OAUTH_BCP_INSECURE_<behavior>_ENABLED`` boolean:
 
-* ``True`` (the current default) — the insecure/legacy behavior is allowed, but a
-  ``DeprecationWarning`` is emitted whenever it is exercised.
+* ``True`` (the current default) — the insecure/legacy behavior is allowed. The
+  request-time gates (implicit grant, password grant, ``plain`` PKCE, access token in
+  the query string) emit a ``DeprecationWarning`` each time the behavior is exercised.
+  The two ambient/config gates (``OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED`` and
+  ``OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED``) would fire on every request,
+  so they are surfaced by ``manage.py check --deploy`` (``W005``/``W006``) instead of a
+  per-request/per-token warning.
 * ``False`` — the behavior is enforced: the insecure request is rejected, or the
   secure behavior is performed instead.
 

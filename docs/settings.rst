@@ -384,10 +384,13 @@ RFC 9700 gates (``OAUTH_BCP_INSECURE_*_ENABLED``)
 
 These booleans gate behaviors that `RFC 9700 <https://datatracker.ietf.org/doc/html/rfc9700>`_
 (OAuth 2.0 Security Best Current Practice) discourages. Each defaults to ``True`` (the
-insecure/legacy behavior is allowed but warns when used); setting it to ``False``
-enforces the compliant behavior. The defaults are scheduled to flip to ``False`` in
-the 4.0 release. See :doc:`security` for the full mapping and a copy/paste compliant
-settings block.
+insecure/legacy behavior is allowed); setting it to ``False`` enforces the compliant
+behavior. The request-time gates emit a ``DeprecationWarning`` each time the behavior is
+used; the two ambient/config gates (``OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED`` and
+``OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED``) would fire on every request and are
+instead surfaced by ``manage.py check --deploy``. The defaults are scheduled to flip to
+``False`` in the 4.0 release. See :doc:`security` for the full mapping and a copy/paste
+compliant settings block.
 
 ``OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED``
     Default: ``True``. When ``False``, the implicit grant (``token`` / ``id_token``
