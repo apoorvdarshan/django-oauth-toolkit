@@ -177,7 +177,9 @@ class OAuthLibCore:
 
             # RFC 9207 / RFC 9700 §4.4: include the `iss` authorization-response
             # parameter so clients can detect mix-up attacks. Gated by
-            # OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED.
+            # OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED. Omission is an ambient config
+            # posture (it would apply to every authorization response), so it is surfaced
+            # by the `--deploy` system check W005 rather than a per-response warning.
             if uri is not None and not oauth2_settings.OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED:
                 issuer = oauth2_settings.oauth2_authorization_server_issuer(request)
                 uri = _add_iss_to_redirect(uri, issuer)

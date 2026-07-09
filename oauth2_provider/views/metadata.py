@@ -10,6 +10,32 @@ from ..models import AbstractGrant
 from ..settings import oauth2_settings
 
 
+# RFC 9700 §2.1.2: response types that rely on the implicit grant.
+BCP_IMPLICIT_RESPONSE_TYPES = frozenset({"token", "id_token", "id_token token"})
+
+
+def bcp_filter_response_types(response_types):
+    """
+    Drop implicit response types from a discovery list when the implicit-grant gate
+    (``OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED``) is disabled, so discovery matches
+    what the server will actually accept. Shared by the RFC 8414 and OIDC discovery
+    documents.
+    """
+    if oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED:
+        return list(response_types)
+    return [rt for rt in response_types if rt not in BCP_IMPLICIT_RESPONSE_TYPES]
+
+
+def bcp_filter_code_challenge_methods(methods):
+    """
+    Drop the ``plain`` PKCE method when its gate
+    (``OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED``) is disabled.
+    """
+    if oauth2_settings.OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED:
+        return list(methods)
+    return [m for m in methods if m != "plain"]
+
+
 class ServerMetadataViewMixin:
     """
     Shared URL-building logic for server metadata discovery views.
@@ -57,10 +83,9 @@ class OAuthServerMetadataView(ServerMetadataViewMixin, View):
         # RFC 9700: stop advertising grant/response types that the corresponding
         # OAUTH_BCP_INSECURE_*_ENABLED gate has disabled, so discovery reflects what
         # the server will actually accept.
-        response_types = list(oauth2_settings.OAUTH2_RESPONSE_TYPES_SUPPORTED)
+        response_types = bcp_filter_response_types(oauth2_settings.OAUTH2_RESPONSE_TYPES_SUPPORTED)
         grant_types = list(oauth2_settings.OAUTH2_GRANT_TYPES_SUPPORTED)
         if not oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED:
-            response_types = [rt for rt in response_types if rt != "token"]
             grant_types = [gt for gt in grant_types if gt != "implicit"]
         if not oauth2_settings.OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED:
             grant_types = [gt for gt in grant_types if gt != "password"]
@@ -90,11 +115,10 @@ class OAuthServerMetadataView(ServerMetadataViewMixin, View):
         # Capability fields describe a specific endpoint, so only advertise them
         # when that endpoint is actually present.
         if "authorization_endpoint" in data:
-            challenge_methods = [key for key, _ in AbstractGrant.CODE_CHALLENGE_METHODS]
             # RFC 9700 §2.1.1: drop "plain" from discovery when it is no longer accepted.
-            if not oauth2_settings.OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED:
-                challenge_methods = [m for m in challenge_methods if m != "plain"]
-            data["code_challenge_methods_supported"] = challenge_methods
+            data["code_challenge_methods_supported"] = bcp_filter_code_challenge_methods(
+                [key for key, _ in AbstractGrant.CODE_CHALLENGE_METHODS]
+            )
         if "token_endpoint" in data:
             data["token_endpoint_auth_methods_supported"] = auth_methods
         if "revocation_endpoint" in data:

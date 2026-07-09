@@ -21,6 +21,7 @@ from oauth2_provider.models import get_access_token_model, get_application_model
 from oauth2_provider.oauth2_backends import _add_iss_to_redirect
 from oauth2_provider.views import ProtectedResourceView
 
+from . import presets
 from .common_testing import OAuth2ProviderTestCase as TestCase
 from .utils import get_basic_auth_header
 
@@ -59,7 +60,10 @@ class TestPasswordGrantGate(TestCase):
         return self.client.post(reverse("oauth2_provider:token"), data=data, **headers)
 
     def test_allowed_by_default(self):
-        self.assertEqual(self._request_token().status_code, 200)
+        # Insecure default is preserved but warns when exercised.
+        with self.assertWarns(DeprecationWarning):
+            response = self._request_token()
+        self.assertEqual(response.status_code, 200)
 
     def test_rejected_when_gate_disabled(self):
         self.oauth2_settings.OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED = False
@@ -98,8 +102,10 @@ class TestImplicitGrantGate(TestCase):
         )
 
     def test_allowed_by_default(self):
-        # The consent page renders (HTTP 200) when implicit is permitted.
-        self.assertEqual(self._authorize().status_code, 200)
+        # The consent page renders (HTTP 200) when implicit is permitted, and warns.
+        with self.assertWarns(DeprecationWarning):
+            response = self._authorize()
+        self.assertEqual(response.status_code, 200)
 
     def test_rejected_when_gate_disabled(self):
         self.oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED = False
@@ -141,7 +147,8 @@ class TestPkcePlainGate(TestCase):
         )
 
     def test_allowed_by_default(self):
-        response = self._authorize_and_confirm()
+        with self.assertWarns(DeprecationWarning):
+            response = self._authorize_and_confirm()
         self.assertEqual(response.status_code, 302)
         self.assertIn("code=", response["Location"])
 
@@ -219,7 +226,8 @@ class TestAccessTokenInQueryGate(TestCase):
         self._make_token()
         request = self.factory.get("/fake-resource?access_token=querytoken123")
         request.user = self.user
-        response = ResourceView.as_view()(request)
+        with self.assertWarns(DeprecationWarning):
+            response = ResourceView.as_view()(request)
         self.assertEqual(response, "This is a protected resource")
 
     def test_query_token_rejected_when_gate_disabled(self):
@@ -304,6 +312,33 @@ class TestMetadataGating(TestCase):
         self.assertNotIn("implicit", data["grant_types_supported"])
         self.assertNotIn("password", data["grant_types_supported"])
         self.assertNotIn("token", data["response_types_supported"])
+        self.assertNotIn("plain", data["code_challenge_methods_supported"])
+        self.assertTrue(data["authorization_response_iss_parameter_supported"])
+
+
+@pytest.mark.usefixtures("oauth2_settings")
+@pytest.mark.oauth2_settings(presets.OIDC_SETTINGS_RW)
+class TestOIDCDiscoveryGating(TestCase):
+    """The OIDC discovery document must mirror the RFC 8414 metadata gating."""
+
+    def _discovery(self):
+        return json.loads(self.client.get("/o/.well-known/openid-configuration").content)
+
+    def test_advertises_insecure_by_default(self):
+        data = self._discovery()
+        self.assertIn("token", data["response_types_supported"])
+        self.assertIn("plain", data["code_challenge_methods_supported"])
+        self.assertNotIn("authorization_response_iss_parameter_supported", data)
+
+    def test_hides_gated_behavior(self):
+        self.oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED = False
+        self.oauth2_settings.OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED = False
+        self.oauth2_settings.OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED = False
+        data = self._discovery()
+        for implicit_rt in ("token", "id_token", "id_token token"):
+            self.assertNotIn(implicit_rt, data["response_types_supported"])
+        # Hybrid response types are not gated and remain advertised.
+        self.assertIn("code id_token", data["response_types_supported"])
         self.assertNotIn("plain", data["code_challenge_methods_supported"])
         self.assertTrue(data["authorization_response_iss_parameter_supported"])
 

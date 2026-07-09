@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED` (§2.4), `OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED` (§2.1.1),
   `OAUTH_BCP_INSECURE_ACCESS_TOKEN_IN_QUERY_ENABLED` (§4.3.2), `OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED` (§4.4),
   and `OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED` (§4). Gated behaviors are also removed from the RFC 8414
-  authorization-server metadata when disabled.
+  authorization-server metadata and the OIDC discovery document when disabled, so both stay consistent with what the
+  server accepts.
 * [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) `iss` authorization-response parameter and the
   `authorization_response_iss_parameter_supported` metadata field (mix-up defense), gated by
   `OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED`.

@@ -2,14 +2,20 @@
 Helpers for the RFC 9700 (OAuth 2.0 Security Best Current Practice) gates.
 
 Each ``OAUTH_BCP_INSECURE_*_ENABLED`` setting guards a behavior that RFC 9700
-discourages. The contract, implemented by :func:`bcp_insecure_behavior_allowed`,
-is the same for every gate:
+discourages. When the gate is ``False`` the insecure behavior is always enforced away
+(the request is rejected, or the secure action is performed instead). How the insecure
+state is *surfaced* while the gate is ``True`` depends on the kind of gate:
 
-* ``True`` (the current default) — the insecure/legacy behavior is allowed, but a
-  ``DeprecationWarning`` (and a log line) is emitted whenever the insecure path is
-  actually exercised.
-* ``False`` — the insecure behavior is not allowed; callers enforce the compliant
-  behavior (reject the request, or perform the secure action instead).
+* **Request-time gates** — a discrete, client-triggered insecure action (the implicit
+  grant, the password grant, a ``plain`` PKCE challenge, an access token in the query
+  string). These call :func:`bcp_insecure_behavior_allowed` on the insecure code path,
+  which emits a ``DeprecationWarning`` (and a log line) each time the action is
+  exercised.
+* **Ambient/config gates** — a server-wide posture that would otherwise be exercised on
+  *every* request (storing tokens in plaintext, omitting the RFC 9207 ``iss``
+  parameter). Emitting a warning per operation would flood logs, so these are surfaced
+  once, at configuration time, by the ``--deploy`` system checks in
+  :mod:`oauth2_provider.checks` (``W005``/``W006``) rather than per operation.
 
 The insecure defaults are scheduled to flip to ``False`` in the 4.0 release.
 """

@@ -990,6 +990,11 @@ class OAuth2Validator(RequestValidator):
         when redacting, the raw value is stashed on ``_raw_token`` (used only to compute
         the checksum) and the ``token`` column is left blank so the reusable token is
         never persisted.
+
+        Plaintext storage is an ambient config posture exercised on every token
+        issuance, so (unlike the request-time gates) it is surfaced by the ``--deploy``
+        system check ``W006`` rather than a per-token warning here. See
+        :mod:`oauth2_provider.bcp`.
         """
         if oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED:
             token_instance.token = raw_token
