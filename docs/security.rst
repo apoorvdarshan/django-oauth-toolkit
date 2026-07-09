@@ -37,8 +37,11 @@ existing settings below) that is currently on its non-compliant value.
 Compliant settings block
 -------------------------
 
-To adopt the full set of RFC 9700 recommendations today, add the following to your
-``OAUTH2_PROVIDER`` setting::
+To adopt the RFC 9700 recommendations today, add the following to your
+``OAUTH2_PROVIDER`` setting. Hashed token storage is left commented out because it is
+opt-in and incompatible with a non-zero refresh-token grace period (see the caveat
+below); enable it once you have confirmed ``REFRESH_TOKEN_GRACE_PERIOD_SECONDS`` is
+``0``::
 
     OAUTH2_PROVIDER = {
         # ... your existing settings ...
