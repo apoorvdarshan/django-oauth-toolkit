@@ -81,9 +81,10 @@ def validate_bcp_configuration(app_configs, **kwargs):
             checks.Warning(
                 "RFC 9700 (OAuth 2.0 Security BCP): plaintext `http` redirect URIs are allowed (§2.1).",
                 hint=(
-                    "Remove 'http' from OAUTH2_PROVIDER['ALLOWED_REDIRECT_URI_SCHEMES']; "
-                    "loopback http redirects for native apps stay available via "
-                    "ALLOW_LOCALHOST_LOOPBACK."
+                    "Remove 'http' from OAUTH2_PROVIDER['ALLOWED_REDIRECT_URI_SCHEMES'] to "
+                    "require https redirect URIs. Note this also disallows native-app "
+                    "loopback (http://127.0.0.1) callbacks per RFC 8252, so keep 'http' if "
+                    "you must support them."
                 ),
                 id="oauth2_provider.W008",
             )

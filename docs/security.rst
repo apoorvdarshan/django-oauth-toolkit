@@ -73,12 +73,18 @@ drop it from the authorization-server metadata.
 
 Redirect URI matching (§2.1)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-DOT already performs exact redirect-URI matching (scheme, host, port, and path),
-with wildcards off (``ALLOW_URI_WILDCARDS`` defaults to ``False``) and the
-`RFC 8252 <https://datatracker.ietf.org/doc/html/rfc8252>`_ loopback exemption off by
-default. Set ``ALLOWED_REDIRECT_URI_SCHEMES = ["https"]`` to disallow registering
-plaintext ``http`` redirect URIs; loopback ``http`` for native apps remains available
-through ``ALLOW_LOCALHOST_LOOPBACK``.
+DOT already performs exact redirect-URI matching (scheme, host, port, and path), with
+wildcards off (``ALLOW_URI_WILDCARDS`` defaults to ``False``). Set
+``ALLOWED_REDIRECT_URI_SCHEMES = ["https"]`` to disallow registering plaintext ``http``
+redirect URIs.
+
+.. note::
+   Requiring ``https`` also disallows native-app loopback callbacks
+   (``http://127.0.0.1``/``[::1]``, `RFC 8252 <https://datatracker.ietf.org/doc/html/rfc8252>`_),
+   because redirect URIs are validated against ``ALLOWED_REDIRECT_URI_SCHEMES`` by
+   scheme. Keep ``"http"`` in the list if you must support them.
+   ``ALLOW_LOCALHOST_LOOPBACK`` only extends the any-port loopback exemption to
+   ``http://localhost`` — it does not re-enable the ``http`` scheme.
 
 Implicit grant (§2.1.2)
 ~~~~~~~~~~~~~~~~~~~~~~~~
