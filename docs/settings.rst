@@ -379,6 +379,43 @@ According to `OAuth 2.0 Security Best Current Practice <https://oauth.net/2/oaut
 - Public clients MUST use PKCE `RFC7636 <https://datatracker.ietf.org/doc/html/rfc7636>`_
 - For confidential clients, the use of PKCE `RFC7636 <https://datatracker.ietf.org/doc/html/rfc7636>`_ is RECOMMENDED.
 
+RFC 9700 gates (``OAUTH_BCP_INSECURE_*_ENABLED``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These booleans gate behaviors that `RFC 9700 <https://datatracker.ietf.org/doc/html/rfc9700>`_
+(OAuth 2.0 Security Best Current Practice) discourages. Each defaults to ``True`` (the
+insecure/legacy behavior is allowed but warns when used); setting it to ``False``
+enforces the compliant behavior. The defaults are scheduled to flip to ``False`` in
+the 4.0 release. See :doc:`security` for the full mapping and a copy/paste compliant
+settings block.
+
+``OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED``
+    Default: ``True``. When ``False``, the implicit grant (``token`` / ``id_token``
+    response types) is rejected and no longer advertised (RFC 9700 §2.1.2).
+
+``OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED``
+    Default: ``True``. When ``False``, the resource owner password credentials grant
+    is rejected and no longer advertised (RFC 9700 §2.4).
+
+``OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED``
+    Default: ``True``. When ``False``, the PKCE ``plain`` ``code_challenge_method`` is
+    rejected and dropped from metadata; only ``S256`` is accepted (RFC 9700 §2.1.1).
+
+``OAUTH_BCP_INSECURE_ACCESS_TOKEN_IN_QUERY_ENABLED``
+    Default: ``True``. When ``False``, access tokens presented in the URI query
+    string are rejected at the resource server (RFC 9700 §4.3.2).
+
+``OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED``
+    Default: ``True``. When ``False``, the
+    `RFC 9207 <https://datatracker.ietf.org/doc/html/rfc9207>`_ ``iss`` parameter is
+    added to the authorization response and advertised in metadata (RFC 9700 §4.4).
+
+``OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED``
+    Default: ``True``. When ``False``, access and refresh tokens are stored hashed
+    rather than in cleartext (RFC 9700 §4). Incompatible with a non-zero
+    ``REFRESH_TOKEN_GRACE_PERIOD_SECONDS`` (``manage.py check`` raises
+    ``oauth2_provider.E001``).
+
 OIDC_ENABLED
 ~~~~~~~~~~~~
 Default: ``False``

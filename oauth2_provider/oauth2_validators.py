@@ -30,6 +30,7 @@ from jwcrypto.jwt import JWTExpired
 from oauthlib.oauth2.rfc6749 import errors, utils
 from oauthlib.openid import RequestValidator
 
+from .bcp import bcp_insecure_behavior_allowed
 from .exceptions import FatalClientError
 from .models import (
     AbstractApplication,
@@ -666,6 +667,13 @@ class OAuth2Validator(RequestValidator):
         Validate both grant_type is a valid string and grant_type is allowed for current workflow
         """
         assert grant_type in GRANT_TYPE_MAPPING  # mapping misconfiguration
+        # RFC 9700 §2.4: the resource owner password credentials grant MUST NOT be
+        # used. Gated by OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED.
+        if grant_type == "password" and not bcp_insecure_behavior_allowed(
+            "OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED",
+            "The OAuth 2.0 resource owner password credentials grant",
+        ):
+            return False
         return request.client.allows_grant_type(*GRANT_TYPE_MAPPING[grant_type])
 
     def validate_response_type(self, client_id, response_type, client, request, *args, **kwargs):
@@ -676,11 +684,11 @@ class OAuth2Validator(RequestValidator):
         if response_type == "code":
             return client.allows_grant_type(AbstractApplication.GRANT_AUTHORIZATION_CODE)
         elif response_type == "token":
-            return client.allows_grant_type(AbstractApplication.GRANT_IMPLICIT)
+            return self._validate_implicit_response_type(client)
         elif response_type == "id_token":
-            return client.allows_grant_type(AbstractApplication.GRANT_IMPLICIT)
+            return self._validate_implicit_response_type(client)
         elif response_type == "id_token token":
-            return client.allows_grant_type(AbstractApplication.GRANT_IMPLICIT)
+            return self._validate_implicit_response_type(client)
         elif response_type == "code id_token":
             return client.allows_grant_type(AbstractApplication.GRANT_OPENID_HYBRID)
         elif response_type == "code token":
@@ -689,6 +697,21 @@ class OAuth2Validator(RequestValidator):
             return client.allows_grant_type(AbstractApplication.GRANT_OPENID_HYBRID)
         else:
             return False
+
+    def _validate_implicit_response_type(self, client):
+        """
+        Validate an implicit-grant response type (``token``/``id_token``).
+
+        RFC 9700 §2.1.2 says the implicit grant MUST NOT be used. Gated by
+        OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED: when the gate is disabled the
+        response type is rejected even for applications registered for it.
+        """
+        if not client.allows_grant_type(AbstractApplication.GRANT_IMPLICIT):
+            return False
+        return bcp_insecure_behavior_allowed(
+            "OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED",
+            "The OAuth 2.0 implicit grant (response_type=token/id_token)",
+        )
 
     def validate_scopes(self, client_id, scopes, client, request, *args, **kwargs):
         """
@@ -902,7 +925,7 @@ class OAuth2Validator(RequestValidator):
                 access_token.user = request.user
                 access_token.scope = token["scope"]
                 access_token.expires = expires
-                access_token.token = token["access_token"]
+                self._set_token_value(access_token, token["access_token"])
                 access_token.application = request.client
                 access_token.resource = getattr(request, "resource", [])  # RFC 8707
                 access_token.save()
@@ -958,24 +981,51 @@ class OAuth2Validator(RequestValidator):
         else:
             self._create_access_token(expires, request, token)
 
+    def _set_token_value(self, token_instance, raw_token):
+        """
+        Assign the raw token to a token instance, redacting the value stored at rest
+        when OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED is disabled (RFC 9700).
+
+        The lookup checksum (``token_checksum``) is always derived from the raw token;
+        when redacting, the raw value is stashed on ``_raw_token`` so the checksum stays
+        correct while the ``token`` column holds only its (non-reversible) hash.
+        """
+        token_instance.token = raw_token
+        if not oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED:
+            token_instance._raw_token = raw_token
+            token_instance.token = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
     def _create_access_token(self, expires, request, token, source_refresh_token=None):
         id_token = token.get("id_token", None)
         if id_token:
             id_token = self._load_id_token(id_token)
-        return AccessToken.objects.create(
+        access_token = AccessToken(
             user=request.user,
             scope=token["scope"],
             expires=expires,
-            token=token["access_token"],
             id_token=id_token,
             application=request.client,
             source_refresh_token=source_refresh_token,
             resource=getattr(request, "resource", []),  # RFC 8707
         )
+        self._set_token_value(access_token, token["access_token"])
+        access_token.save()
+        return access_token
 
     def _create_authorization_code(self, request, code, expires=None):
         if not expires:
             expires = timezone.now() + timedelta(seconds=oauth2_settings.AUTHORIZATION_CODE_EXPIRE_SECONDS)
+
+        # RFC 9700 §2.1.1 / RFC 7636 §4.2: the "plain" PKCE code_challenge_method is
+        # discouraged in favor of "S256". Gated by OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED.
+        if request.code_challenge_method == "plain" and not bcp_insecure_behavior_allowed(
+            "OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED",
+            'The PKCE "plain" code_challenge_method',
+        ):
+            raise errors.InvalidRequestError(
+                description='Unsupported "plain" code_challenge_method; use "S256".',
+                request=request,
+            )
 
         # RFC 8707: Extract resource parameter
         resource = getattr(request, "resource", [])
@@ -999,14 +1049,16 @@ class OAuth2Validator(RequestValidator):
             token_family = previous_refresh_token.token_family
         else:
             token_family = uuid.uuid4()
-        return RefreshToken.objects.create(
+        refresh_token = RefreshToken(
             user=request.user,
-            token=refresh_token_code,
             application=request.client,
             access_token=access_token,
             token_family=token_family,
             resource=getattr(request, "resource", []),  # RFC 8707
         )
+        self._set_token_value(refresh_token, refresh_token_code)
+        refresh_token.save()
+        return refresh_token
 
     def revoke_token(self, token, token_type_hint, request, *args, **kwargs):
         """

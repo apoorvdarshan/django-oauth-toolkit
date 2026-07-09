@@ -54,12 +54,27 @@ class OAuthServerMetadataView(ServerMetadataViewMixin, View):
 
         auth_methods = oauth2_settings.OAUTH2_TOKEN_ENDPOINT_AUTH_METHODS_SUPPORTED
 
+        # RFC 9700: stop advertising grant/response types that the corresponding
+        # OAUTH_BCP_INSECURE_*_ENABLED gate has disabled, so discovery reflects what
+        # the server will actually accept.
+        response_types = list(oauth2_settings.OAUTH2_RESPONSE_TYPES_SUPPORTED)
+        grant_types = list(oauth2_settings.OAUTH2_GRANT_TYPES_SUPPORTED)
+        if not oauth2_settings.OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED:
+            response_types = [rt for rt in response_types if rt != "token"]
+            grant_types = [gt for gt in grant_types if gt != "implicit"]
+        if not oauth2_settings.OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED:
+            grant_types = [gt for gt in grant_types if gt != "password"]
+
         data = {
             "issuer": issuer_url,
-            "response_types_supported": oauth2_settings.OAUTH2_RESPONSE_TYPES_SUPPORTED,
-            "grant_types_supported": oauth2_settings.OAUTH2_GRANT_TYPES_SUPPORTED,
+            "response_types_supported": response_types,
+            "grant_types_supported": grant_types,
             "scopes_supported": sorted(scopes.get_available_scopes()),
         }
+        # RFC 9207: advertise that we set the `iss` authorization-response parameter
+        # once the mix-up defense is enforced (gate disabled).
+        if not oauth2_settings.OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED:
+            data["authorization_response_iss_parameter_supported"] = True
 
         # Endpoint URLs are resolved via reverse() and omitted if not registered
         for key, view_name in [
@@ -75,9 +90,11 @@ class OAuthServerMetadataView(ServerMetadataViewMixin, View):
         # Capability fields describe a specific endpoint, so only advertise them
         # when that endpoint is actually present.
         if "authorization_endpoint" in data:
-            data["code_challenge_methods_supported"] = [
-                key for key, _ in AbstractGrant.CODE_CHALLENGE_METHODS
-            ]
+            challenge_methods = [key for key, _ in AbstractGrant.CODE_CHALLENGE_METHODS]
+            # RFC 9700 §2.1.1: drop "plain" from discovery when it is no longer accepted.
+            if not oauth2_settings.OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED:
+                challenge_methods = [m for m in challenge_methods if m != "plain"]
+            data["code_challenge_methods_supported"] = challenge_methods
         if "token_endpoint" in data:
             data["token_endpoint_auth_methods_supported"] = auth_methods
         if "revocation_endpoint" in data:

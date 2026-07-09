@@ -74,8 +74,14 @@ class ClientSecretField(models.CharField):
 
 class TokenChecksumField(models.CharField):
     def pre_save(self, model_instance, add):
-        token = getattr(model_instance, "token")
-        checksum = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        # RFC 9700 token storage: when the plaintext token is redacted at rest (see
+        # OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED) the raw token is stashed
+        # on ``_raw_token`` so the lookup checksum is still computed from the real
+        # token value. Falls back to the ``token`` column for the plaintext case.
+        raw_token = getattr(model_instance, "_raw_token", None)
+        if raw_token is None:
+            raw_token = getattr(model_instance, "token")
+        checksum = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
         setattr(model_instance, self.attname, checksum)
         return super().pre_save(model_instance, add)
 

@@ -29,6 +29,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tokens. Dynamically registered applications are flagged with a new `AbstractApplication.dcr_created`
   field and can be filtered in the Django admin.
 * #1739 `ALLOW_LOCALHOST_LOOPBACK` setting to extend the RFC 8252 §7.3 any-port loopback exemption to `http://localhost` redirect URIs (opt-in, default `False`)
+* [RFC 9700](https://datatracker.ietf.org/doc/html/rfc9700) (OAuth 2.0 Security Best Current Practice) compliance
+  gates, each controlled by an `OAUTH_BCP_INSECURE_<behavior>_ENABLED` setting that defaults to `True` (current
+  behavior, warns when the discouraged behavior is used) and is scheduled to default to `False` in 4.0 (enforces
+  the compliant behavior): `OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED` (§2.1.2),
+  `OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED` (§2.4), `OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED` (§2.1.1),
+  `OAUTH_BCP_INSECURE_ACCESS_TOKEN_IN_QUERY_ENABLED` (§4.3.2), `OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED` (§4.4),
+  and `OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED` (§4). Gated behaviors are also removed from the RFC 8414
+  authorization-server metadata when disabled.
+* [RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207) `iss` authorization-response parameter and the
+  `authorization_response_iss_parameter_supported` metadata field (mix-up defense), gated by
+  `OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED`.
+* A `--deploy` security system check that flags every RFC 9700 setting currently on its non-compliant value
+  (ids `oauth2_provider.W001`–`W008`), plus an error (`oauth2_provider.E001`) for the incompatible combination of
+  hashed token storage and a non-zero `REFRESH_TOKEN_GRACE_PERIOD_SECONDS`.
+* New `docs/security.rst` page mapping each RFC 9700 recommendation to the corresponding setting.
+
+### Deprecated
+* Using the OAuth 2.0 implicit grant, the resource owner password credentials grant, the PKCE `plain`
+  `code_challenge_method`, or an access token in the URI query string now emits a `DeprecationWarning`, per
+  [RFC 9700](https://datatracker.ietf.org/doc/html/rfc9700). Each is gated by the corresponding
+  `OAUTH_BCP_INSECURE_*_ENABLED` setting, whose default is scheduled to flip to `False` (enforcing rejection) in 4.0.
 
 ### Changed
 * The dynamic `client_secret` help text (added in #1635) is now shared by the Django admin

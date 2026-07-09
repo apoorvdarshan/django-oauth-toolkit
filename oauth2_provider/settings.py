@@ -130,6 +130,22 @@ DEFAULTS = {
     "AUTHENTICATION_SERVER_EXP_TIME_ZONE": "UTC",
     # Whether or not PKCE is required
     "PKCE_REQUIRED": True,
+    # RFC 9700 (OAuth 2.0 Security Best Current Practice) gates.
+    #
+    # Each ``OAUTH_BCP_INSECURE_*_ENABLED`` flag guards a behavior that RFC 9700
+    # discourages. ``True`` keeps the insecure/legacy behavior available but emits a
+    # warning whenever it is exercised; ``False`` enforces the compliant behavior
+    # (the insecure request is rejected, or the secure behavior is performed).
+    #
+    # They all default to ``True`` so upgrading does not change runtime behavior.
+    # These defaults are scheduled to flip to ``False`` in the 4.0 release; set them
+    # to ``False`` now to adopt the compliant behavior early and silence the warnings.
+    "OAUTH_BCP_INSECURE_IMPLICIT_GRANT_ENABLED": True,
+    "OAUTH_BCP_INSECURE_PASSWORD_GRANT_ENABLED": True,
+    "OAUTH_BCP_INSECURE_PKCE_PLAIN_ENABLED": True,
+    "OAUTH_BCP_INSECURE_ACCESS_TOKEN_IN_QUERY_ENABLED": True,
+    "OAUTH_BCP_INSECURE_OMIT_AUTHZ_ISS_ENABLED": True,
+    "OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED": True,
     # Whether to re-create OAuthlibCore on every request.
     # Should only be required in testing.
     "ALWAYS_RELOAD_OAUTHLIB_CORE": False,
@@ -384,6 +400,28 @@ class OAuth2ProviderSettings:
         issuer_path = issuer_path.strip("/")
         if issuer_path:
             return f"{base}/{issuer_path}"
+        return base
+
+    def oauth2_authorization_server_issuer(self, request):
+        """
+        Get the RFC 9207 issuer identifier for the ``iss`` authorization-response
+        parameter.
+
+        The value must equal the ``issuer`` published in the RFC 8414 metadata
+        document, so it is derived the same way: ``OIDC_ISS_ENDPOINT`` verbatim when
+        configured, otherwise the base of the authorization-server metadata URL
+        (which preserves any mount prefix). Unlike :meth:`oauth2_metadata_issuer`,
+        this can be called from endpoints (e.g. the authorization endpoint) whose own
+        path does not contain the ``.well-known`` marker.
+        """
+        if self.OIDC_ISS_ENDPOINT:
+            return self.OIDC_ISS_ENDPOINT
+        try:
+            well_known = reverse("oauth2_provider:oauth-server-metadata")
+        except NoReverseMatch:
+            return request.build_absolute_uri("/").rstrip("/")
+        abs_url = request.build_absolute_uri(well_known)
+        base, _, _ = abs_url.partition("/.well-known/oauth-authorization-server")
         return base
 
     def oidc_issuer(self, request):
