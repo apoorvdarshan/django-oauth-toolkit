@@ -277,6 +277,21 @@ def test_implicit_response_type_rejected_for_non_implicit_client():
     assert validator.validate_response_type(None, "token", _Client(), None) is False
 
 
+def test_set_token_value_clears_stale_raw_token_in_plaintext_mode():
+    # With plaintext storage (the default), _set_token_value must clear any stale
+    # _raw_token so a later save derives the checksum from the plaintext token.
+    from oauth2_provider.oauth2_validators import OAuth2Validator
+
+    class _Tok:
+        pass
+
+    tok = _Tok()
+    tok._raw_token = "STALE"  # left over from a prior hashed-mode assignment
+    OAuth2Validator()._set_token_value(tok, "freshtoken")
+    assert tok.token == "freshtoken"
+    assert tok._raw_token is None
+
+
 def test_add_iss_to_redirect_query():
     result = _add_iss_to_redirect("https://c.example/cb?code=abc&state=x", "https://as.example")
     assert result == "https://c.example/cb?code=abc&state=x&iss=https%3A%2F%2Fas.example"

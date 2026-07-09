@@ -998,6 +998,9 @@ class OAuth2Validator(RequestValidator):
         """
         if oauth2_settings.OAUTH_BCP_INSECURE_PLAINTEXT_TOKEN_STORAGE_ENABLED:
             token_instance.token = raw_token
+            # Clear any stale redaction marker so a later save recomputes the checksum
+            # from this plaintext token rather than a previously stashed raw value.
+            token_instance._raw_token = None
         else:
             token_instance._raw_token = raw_token
             token_instance.token = ""
